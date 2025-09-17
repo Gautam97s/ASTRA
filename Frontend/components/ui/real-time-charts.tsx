@@ -13,78 +13,64 @@ import {
 } from "recharts"
 import { Activity, Thermometer, Volume2, Zap } from "lucide-react"
 
-// --- helper: generate mock time-series data ---
-const generateTimeSeriesData = (baseValue: number, variance: number, points = 24) => {
-  const data = []
-  const now = new Date()
-  for (let i = points - 1; i >= 0; i--) {
-    const time = new Date(now.getTime() - i * 60 * 60 * 1000) // past N hours
-    const value = baseValue + (Math.random() - 0.5) * variance
-    data.push({
-      time: time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      timestamp: time.getTime(),
-      value: Math.max(0, Number(value.toFixed(2))),
-    })
-  }
-  return data
+type ChartData = {
+  time: string;
+  timestamp: number;
+  value: number;
 }
 
-export function RealTimeCharts() {
-  const [chartData, setChartData] = useState<any>(null)
+type RealTimeChartsProps = {
+  initialData?: {
+    vibration: ChartData[];
+    stress: ChartData[];
+    temperature: ChartData[];
+    acoustic: ChartData[];
+  };
+};
+
+export function RealTimeCharts({ initialData }: RealTimeChartsProps) {
+  const [chartData, setChartData] = useState(initialData)
+  const [isLoading, setIsLoading] = useState(!initialData)
+  const [error, setError] = useState<string | null>(null)
   const [updatedTime, setUpdatedTime] = useState<string>("")
 
-  // only run on client to avoid hydration mismatch
   useEffect(() => {
-    setChartData({
-      vibration: generateTimeSeriesData(2.4, 1.5),
-      stress: generateTimeSeriesData(45.7, 8.0),
-      temperature: generateTimeSeriesData(28.5, 4.0),
-      acoustic: generateTimeSeriesData(67.2, 12.0),
-    })
-    setUpdatedTime(new Date().toLocaleTimeString())
-  }, [])
+    // If no initial data is provided, fetch it.
+    // This allows the component to be reused on its own dedicated page.
+    if (!initialData) {
+      const fetchData = async () => {
+        setIsLoading(true);
+        try {
+          const response = await fetch("http://localhost:5000/api/real-time-data")
+          if (!response.ok) throw new Error("Failed to fetch real-time chart data.")
+          const data = await response.json()
+          setChartData(data)
+          setUpdatedTime(new Date().toLocaleTimeString())
+          setError(null)
+        } catch (err: any) {
+          setError(err.message)
+        } finally {
+          setIsLoading(false);
+        }
+      }
+      fetchData()
+      const interval = setInterval(fetchData, 30000) // Refresh charts every 30s
+      return () => clearInterval(interval)
+    } else {
+        // We can assume if initialData is provided, a parent component handles updates.
+        setUpdatedTime(new Date().toLocaleTimeString())
+    }
+  }, [initialData])
 
-  if (!chartData) {
-    return <div className="text-muted-foreground">Loading charts...</div>
-  }
+  if (isLoading) return <div className="text-muted-foreground">Loading charts...</div>
+  if (error) return <div className="text-red-500">Error: {error}</div>
+  if (!chartData) return null;
 
   const chartConfigs = [
-    {
-      id: "vibration",
-      title: "Vibration vs Time",
-      data: chartData.vibration,
-      color: "#006BFF",
-      unit: "mm/s",
-      icon: Activity,
-      yAxisDomain: [0, 10],
-    },
-    {
-      id: "stress",
-      title: "Wall Stress vs Time",
-      data: chartData.stress,
-      color: "#8b5cf6",
-      unit: "MPa",
-      icon: Zap,
-      yAxisDomain: [0, 80],
-    },
-    {
-      id: "temperature",
-      title: "Temperature vs Time",
-      data: chartData.temperature,
-      color: "#ec4899",
-      unit: "°C",
-      icon: Thermometer,
-      yAxisDomain: [0, 50],
-    },
-    {
-      id: "acoustic",
-      title: "Acoustic Activity vs Time",
-      data: chartData.acoustic,
-      color: "#f59e0b",
-      unit: "dB",
-      icon: Volume2,
-      yAxisDomain: [0, 100],
-    },
+    { id: "vibration", title: "Vibration vs Time", data: chartData.vibration, color: "#006BFF", unit: "mm/s", icon: Activity, yAxisDomain: [0, 10] },
+    { id: "stress", title: "Wall Stress vs Time", data: chartData.stress, color: "#8b5cf6", unit: "MPa", icon: Zap, yAxisDomain: [0, 80] },
+    { id: "temperature", title: "Temperature vs Time", data: chartData.temperature, color: "#ec4899", unit: "°C", icon: Thermometer, yAxisDomain: [0, 50] },
+    { id: "acoustic", title: "Acoustic Activity vs Time", data: chartData.acoustic, color: "#f59e0b", unit: "dB", icon: Volume2, yAxisDomain: [0, 100] },
   ]
 
   return (
@@ -102,34 +88,14 @@ export function RealTimeCharts() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis
-                    dataKey="time"
-                    stroke="white"
-                    tick={{ fill: "white", fontSize: 12 }}
-                  />
-                  <YAxis
-                    stroke="white"
-                    domain={yAxisDomain}
-                    tick={{ fill: "white", fontSize: 12 }}
-                  />
+                  <XAxis dataKey="time" stroke="white" tick={{ fill: "white", fontSize: 12 }} />
+                  <YAxis stroke="white" domain={yAxisDomain} tick={{ fill: "white", fontSize: 12 }} />
                   <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--background))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                      color: "hsl(var(--foreground))",
-                    }}
+                    contentStyle={{ backgroundColor: "hsl(var(--background))", border: "1px solid hsl(var(--border))", borderRadius: "8px", color: "hsl(var(--foreground))" }}
                     labelStyle={{ color: "hsl(var(--muted-foreground))" }}
                     formatter={(value: any) => [`${value} ${unit}`, ""]}
                   />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke={color}
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
+                  <Line type="monotone" dataKey="value" stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
