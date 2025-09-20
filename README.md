@@ -80,15 +80,7 @@ ASTRA is a web application designed to provide users with a comprehensive platfo
 
     ```bash
     cd Backend
-    npm run dev
-    # or
-    yarn dev
-    # or
-    pnpm dev
-    # or
-    bun dev
-    ```
-
+    uvicorn main:app --reload --host 0.0.0.0 --port 5000
 2.  **Start the Frontend server:**
 
     ```bash
